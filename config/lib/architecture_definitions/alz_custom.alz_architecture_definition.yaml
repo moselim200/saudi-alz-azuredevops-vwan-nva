@@ -1,0 +1,94 @@
+# CUSTOMER INPUT (review): Customize display_name values for the customer's organization if required.
+# Management-group IDs are tenant-wide unique; keep the current IDs only if they are available/intended.
+# If renaming IDs, update every parent_id, tfvars subscription-placement target and policy override key
+# (for example corp), plus any affected test expectations. Display-name-only edits do not require this.
+# Keep exists: false for this fresh source configuration; do not use it to adopt arbitrary existing groups.
+# Bootstrap creates the intermediate root and adjusts its exists flag in the published architecture.
+# The root's null parent_id uses root_parent_management_group_id from inputs.yaml.
+# CUSTOMER INPUT: If changing this architecture name, also change tfvars architecture_name and its filename.
+name: alz_custom
+management_groups:
+  - id: alz
+    # CUSTOMER INPUT (optional): Change this label without changing id when only branding is needed.
+    display_name: Saudi Landing Zone
+    archetypes:
+      - root_custom
+    exists: false
+    parent_id: null
+
+  - id: platform
+    display_name: Platform
+    archetypes:
+      - platform_custom
+    exists: false
+    parent_id: alz
+
+  - id: landingzones
+    display_name: Landing Zones
+    archetypes:
+      - landing_zones_custom
+    exists: false
+    parent_id: alz
+
+  - id: corp
+    display_name: Corp
+    archetypes:
+      - corp_custom
+    exists: false
+    parent_id: landingzones
+
+  - id: online
+    display_name: Online
+    archetypes:
+      - online_custom
+    exists: false
+    parent_id: landingzones
+
+  - id: local
+    display_name: Local
+    archetypes:
+      - local_custom
+    exists: false
+    parent_id: landingzones
+
+  - id: sandbox
+    display_name: Sandbox
+    archetypes:
+      - sandbox_custom
+    exists: false
+    parent_id: alz
+
+  - id: security
+    display_name: Security
+    archetypes:
+      - security_custom
+    exists: false
+    parent_id: platform
+
+  - id: management
+    display_name: Management
+    archetypes:
+      - management_custom
+    exists: false
+    parent_id: platform
+
+  - id: connectivity
+    display_name: Connectivity
+    archetypes:
+      - connectivity_custom
+    exists: false
+    parent_id: platform
+
+  - id: identity
+    display_name: Identity
+    archetypes:
+      - identity_custom
+    exists: false
+    parent_id: platform
+
+  - id: decommissioned
+    display_name: Decommissioned
+    archetypes:
+      - decommissioned_custom
+    exists: false
+    parent_id: alz

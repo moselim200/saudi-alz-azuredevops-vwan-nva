@@ -1,0 +1,59 @@
+---
+# CUSTOMER INPUT: Replace <...> values, except the two literal PAT placeholders.
+# Reduced Saudi NVA-ready profile; not a complete production landing-zone baseline.
+# Entire bootstrap (state, ACR, ACI agents, networking and pipeline identities) is
+# in UAE North. Obtain approval; platform resources remain in Saudi Arabia East.
+bootstrap_location: "uaenorth"
+root_parent_management_group_id: "<parent-management-group-id>"
+subscription_ids:
+  management: "<management-subscription-id>"
+  identity: "<identity-subscription-id>"
+  connectivity: "<connectivity-subscription-id>"
+  security: "<security-subscription-id>"
+bootstrap_subscription_id: "<bootstrap-subscription-id>"
+
+# Lowercase letters/numbers only. Choose unique repo/Azure resource names.
+# These names do not automatically rename all management groups in config\lib.
+service_name: "<customer-service-name>"
+environment_name: "<customer-environment-name>"
+postfix_number: 1
+
+# Customer Azure DevOps Services organization name, not a complete URL.
+azure_devops_organization_name: "<azure-devops-organization>"
+azure_devops_project_name: "<azure-devops-project>"
+# True creates a project; false references an existing project by name.
+# Review permissions, existing contents and repository-name collisions first.
+azure_devops_create_project: true
+use_separate_repository_for_templates: true
+create_branch_policies: true
+
+# Preserve placeholders. Supply secrets through process TF_VAR_... variables.
+# Bootstrap PAT: scopes in the official Azure DevOps prerequisites.
+# Agent PAT: Agent Pools Read & manage; maintain renewal/rotation.
+azure_devops_personal_access_token: "<azure_devops_personal_access_token>"
+azure_devops_agents_personal_access_token: "<azure_devops_agents_personal_access_token>"
+
+# Native Azure DevOps self-hosted ACI agents with private storage/ACR endpoints.
+# Do not run untrusted PR code on privileged deployment agents.
+use_self_hosted_agents: true
+use_private_networking: true
+allow_storage_access_from_my_ip: false
+# Examples only; approve separately from the Saudi platform CIDRs.
+virtual_network_address_space: "10.250.0.0/24"
+virtual_network_subnet_address_prefix_container_instances: "10.250.0.0/26"
+virtual_network_subnet_address_prefix_private_endpoints: "10.250.0.64/26"
+
+# Azure DevOps user principal names, not GitHub usernames.
+# Empty does not populate customer approvers. Confirm environment checks and
+# service-connection authorization before the automatic main-branch CD trigger.
+apply_approvers: []
+
+iac_type: "terraform"
+bootstrap_module_name: "alz_azuredevops"
+starter_module_name: "platform_landing_zone"
+starter_module_version: "v17.7.0"
+terraform_version: "1.14.9"
+
+# Launcher supplies absolute source/overlay paths and the ordinary output folder.
+# Do not add bootstrap_module_override_folder_path, starter_additional_files or
+# output_folder_path here. Do not run the interactive input saver over this file.

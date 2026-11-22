@@ -1,0 +1,68 @@
+{
+  "profile": "Saudi Arabia East vWAN NVA-ready; Terraform/Azure DevOps Services; UAE North private bootstrap",
+  "package_revision": 2,
+  "prepared_date": "2026-11-22",
+  "source_control": "azuredevops",
+  "derived_from": "GitHub vWAN NVA-ready revision 5 (19 November)",
+  "active_topology": "virtual_wan",
+  "customer_word_guide": "docs/CUSTOMER-GUIDE-VWAN-AZUREDEVOPS.docx",
+  "change_inventory": "docs/CHANGE-SUMMARY.md",
+  "alz_powershell": "7.1.5",
+  "terraform_cli": "1.14.9",
+  "starter": {
+    "version": "v17.7.0",
+    "commit": "971521667191010072a3e0a3d8f300a72c701c08"
+  },
+  "connectivity": {
+    "module": "virtual-wan",
+    "version": "0.18.0",
+    "commit": "116594239389f448c8db52b225566ef9e7ca68b5"
+  },
+  "private_dns": {
+    "version": "0.23.2",
+    "commit": "4d2214f162806d48ea9a157de4b904f879fc61d4",
+    "saudi_backup_geo": "sae"
+  },
+  "bootstrap": {
+    "commit": "7887040f5e865ba134b4108aeac7b83a397a0d5c",
+    "module": "alz_azuredevops",
+    "location": "uaenorth",
+    "changes": [
+      "alz/azuredevops/pipelines/terraform/templates/helpers/terraform-plan.yaml",
+      "alz/azuredevops/pipelines/terraform/templates/helpers/terraform-apply.yaml"
+    ]
+  },
+  "policy_assignment_identity_location": "uaenorth",
+  "alz_library": "platform/alz@2026.11.0",
+  "validation": {
+    "bootstrap_init_validate": "passed; no Azure plan/apply",
+    "launcher_cases": "12 passed per package; bootstrap stubbed",
+    "pipeline_syntax": "local YAML/template/PowerShell checks; not Azure DevOps server compilation",
+    "source_only_archive_hashes": "verified by packager",
+    "customer_azuredevops_bootstrap_ci_cd": "not performed",
+    "nva_traffic_security_production_readiness": "not established"
+  },
+  "disabled": [
+    "management LAW/AMA/DCR",
+    "Azure Firewall",
+    "DNS Resolver",
+    "DDoS",
+    "VPN/ExpressRoute gateways"
+  ],
+  "nva_scope": "network groundwork only; no appliance, licensing, HA or validated inspection",
+  "excluded": [
+    "customer data/secrets",
+    "output/state/plans",
+    ".git/.terraform caches",
+    "executable binaries"
+  ],
+  "revision_2_changes": "Documentation only: complete pinned Terraform download block; required bootstrap subscription clarification. Existing inputs unchanged.",
+  "publication": {
+    "date": "2026-11-22",
+    "status": "Customer testing in progress",
+    "verification_basis": "local preparation; live test not complete",
+    "file_change_register": "docs/FILE-CHANGES.md",
+    "runtime_configuration": "unchanged from source archive",
+    "inactive_candidate_files_omitted": []
+  }
+}

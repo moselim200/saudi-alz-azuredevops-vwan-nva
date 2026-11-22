@@ -1,0 +1,30 @@
+{
+  "baseline": "GitHub vWAN v5",
+  "note": "Only copied package migrated. Original GitHub source preserved. New/removed docs are handover cleanup, not resource deletions.",
+  "changed": [
+    "PACKAGE-MANIFEST.json",
+    "README.md",
+    "Start-CustomerBootstrap.ps1",
+    "config/inputs.yaml",
+    "docs/CHANGE-SUMMARY.md",
+    "sources/bootstrap/alz/azuredevops/pipelines/terraform/templates/helpers/terraform-apply.yaml",
+    "sources/bootstrap/alz/azuredevops/pipelines/terraform/templates/helpers/terraform-plan.yaml"
+  ],
+  "added": [
+    "START-HERE.md",
+    "docs/CUSTOMER-GUIDE-VWAN-AZUREDEVOPS.docx",
+    "docs/CUSTOMER-INSTRUCTIONS.md",
+    "docs/VALIDATION.md",
+    "tests/Test-Launcher.ps1"
+  ],
+  "removed": [
+    "config/scenarios/README.md",
+    "config/scenarios/hub-spoke-firewall-premium/platform-landing-zone.tfvars",
+    "config/scenarios/hub-spoke-nva/platform-landing-zone.tfvars",
+    "config/scenarios/vwan-nva/platform-landing-zone.tfvars",
+    "docs/CUSTOMER-CHECKLIST.md",
+    "docs/CUSTOMER-GUIDE-VWAN-NVA-READY.docx",
+    "docs/NETWORK-TOPOLOGY-SCENARIOS.md"
+  ],
+  "platform_tfvars_library_network_overlays": "byte-for-byte preserved"
+}

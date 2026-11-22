@@ -1,0 +1,102 @@
+locals {
+  sidecar_virtual_networks_enabled = { for key, value in var.virtual_hubs : key => value.enabled_resources.sidecar_virtual_network }
+}
+
+# Only the slots that belong to the sidecar virtual network module are cascaded.
+locals {
+  sidecar_virtual_network_ignore_body_changes = {
+    virtual_networks         = var.ignore_body_changes.virtual_networks
+    virtual_networks_subnets = var.ignore_body_changes.virtual_networks_subnets
+  }
+}
+
+locals {
+  sidecar_virtual_networks = { for key, value in var.virtual_hubs : key => {
+    name          = coalesce(value.sidecar_virtual_network.name, local.default_names[key].sidecar_virtual_network_name)
+    location      = value.location
+    parent_id     = coalesce(value.sidecar_virtual_network.parent_id, value.hub.parent_id, value.default_parent_id)
+    address_space = coalesce(value.sidecar_virtual_network.address_space, [local.virtual_network_default_ip_prefixes[key]["sidecar"]])
+    ddos_protection_plan = local.ddos_protection_plan_enabled ? {
+      id     = module.ddos_protection_plan[0].resource.id
+      enable = true
+    } : value.sidecar_virtual_network.ddos_protection_plan
+    tags = coalesce(value.sidecar_virtual_network.tags, var.tags, {})
+  } if local.sidecar_virtual_networks_enabled[key] }
+}
+
+locals {
+  bastion_subnets = { for key, value in var.virtual_hubs : key => {
+    bastion = {
+      hub_network_key                 = key
+      address_prefixes                = [coalesce(value.bastion.subnet_address_prefix, local.virtual_network_subnet_default_ip_prefixes[key]["bastion"])]
+      name                            = "AzureBastionSubnet"
+      default_outbound_access_enabled = value.bastion.subnet_default_outbound_access_enabled
+    } } if local.bastions_enabled[key]
+  }
+  private_dns_resolver_subnets = { for key, value in var.virtual_hubs : key => {
+    dns_resolver = {
+      hub_network_key  = key
+      address_prefixes = [coalesce(value.private_dns_resolver.subnet_address_prefix, local.virtual_network_subnet_default_ip_prefixes[key]["dns_resolver"])]
+      name             = value.private_dns_resolver.subnet_name
+      delegations = [{
+        name = "Microsoft.Network.dnsResolvers"
+        service_delegation = {
+          name = "Microsoft.Network/dnsResolvers"
+        }
+      }]
+      default_outbound_access_enabled = value.private_dns_resolver.subnet_default_outbound_access_enabled
+    } } if local.private_dns_resolver_enabled[key]
+  }
+  subnets = { for key, value in var.virtual_hubs : key => merge(lookup(local.private_dns_resolver_subnets, key, {}), lookup(local.bastion_subnets, key, {}), value.sidecar_virtual_network.subnets) }
+}
+
+locals {
+  virtual_network_connections = merge(local.virtual_network_connections_input, local.virtual_network_connections_side_car)
+  virtual_network_connections_input = { for virtual_network_connection in flatten([for virtual_hub_key, virtual_hub_value in var.virtual_hubs :
+    [for virtual_network_connection_key, virtual_network_connection_value in virtual_hub_value.virtual_network_connections : {
+      unique_key                = "${virtual_hub_key}-${virtual_network_connection_key}"
+      name                      = virtual_network_connection_value.name
+      virtual_hub_key           = virtual_hub_key
+      remote_virtual_network_id = virtual_network_connection_value.remote_virtual_network_id
+      internet_security_enabled = virtual_network_connection_value.internet_security_enabled
+      routing                   = virtual_network_connection_value.routing
+    }]
+    ]) : virtual_network_connection.unique_key => {
+    name                      = virtual_network_connection.name
+    virtual_hub_key           = virtual_network_connection.virtual_hub_key
+    remote_virtual_network_id = virtual_network_connection.remote_virtual_network_id
+    internet_security_enabled = virtual_network_connection.internet_security_enabled
+    routing                   = virtual_network_connection.routing
+  } }
+  virtual_network_connections_side_car = { for key, value in local.sidecar_virtual_networks : "private_dns_vnet_${key}" => {
+    name                      = coalesce(var.virtual_hubs[key].sidecar_virtual_network.virtual_network_connection_settings.name, "vnet-side-car-${key}")
+    virtual_hub_key           = key
+    remote_virtual_network_id = module.virtual_network_side_car[key].resource_id
+    internet_security_enabled = var.virtual_hubs[key].sidecar_virtual_network.virtual_network_connection_settings.internet_security_enabled,
+    routing                   = var.virtual_hubs[key].sidecar_virtual_network.virtual_network_connection_settings.routing
+    } if local.sidecar_virtual_networks_enabled[key]
+  }
+}
+
+locals {
+  virtual_hub_route_tables = { for route_table in flatten([for virtual_hub_key, virtual_hub_value in var.virtual_hubs :
+    [for route_table_key, route_table_value in virtual_hub_value.route_tables : {
+      unique_key      = "${virtual_hub_key}-${route_table_key}"
+      name            = route_table_value.name
+      virtual_hub_key = virtual_hub_key
+      labels          = route_table_value.labels
+      # `vnet_connection_key` is user-supplied and scoped to the same hub as this route table, but the
+      # `virtual_network_connections` map further down is flattened and keyed as `<virtual_hub_key>-<connection_key>`.
+      # Translate the route's sibling connection key here, while `virtual_hub_key` is still in scope, so the
+      # submodule's lookup against `module.virtual_network_connections.resource_object` actually matches.
+      routes = { for route_key, route_value in route_table_value.routes : route_key => merge(route_value, {
+        vnet_connection_key = route_value.vnet_connection_key != null ? "${virtual_hub_key}-${route_value.vnet_connection_key}" : null
+      }) }
+    }]
+    ]) : route_table.unique_key => {
+    name            = route_table.name
+    virtual_hub_key = route_table.virtual_hub_key
+    labels          = route_table.labels
+    routes          = route_table.routes
+  } }
+}

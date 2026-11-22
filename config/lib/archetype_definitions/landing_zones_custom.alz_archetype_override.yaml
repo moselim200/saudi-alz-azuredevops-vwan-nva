@@ -1,0 +1,22 @@
+base_archetype: landing_zones
+name: landing_zones_custom
+policy_assignments_to_add: []
+# SAUDI TEST: Omit SQL-to-workspace auditing and AMA deployments while monitoring is disabled.
+policy_assignments_to_remove: [
+  Deploy-AzSqlDb-Auditing,
+  Deploy-MDFC-DefSQL-AMA,
+  Deploy-VM-ChangeTrack,
+  Deploy-VM-Monitoring,
+  Deploy-vmArc-ChangeTrack,
+  Deploy-vmHybr-Monitoring,
+  Deploy-VMSS-ChangeTrack,
+  Deploy-VMSS-Monitoring,
+  # SAUDI TEST: Match the lab's disabled DDoS plan; this is not a regional availability finding.
+  Enable-DDoS-VNET,
+]
+policy_definitions_to_add: []
+policy_definitions_to_remove: []
+policy_set_definitions_to_add: []
+policy_set_definitions_to_remove: []
+role_definitions_to_add: []
+role_definitions_to_remove: []

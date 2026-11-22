@@ -1,0 +1,119 @@
+output "bastion_host_dns_names" {
+  description = "The bastion host resources associated with the virtual WAN, grouped by hub key."
+  value       = { for key, value in module.bastion_host : key => value.dns_name }
+}
+
+output "bastion_host_public_ip_address" {
+  description = "The public IP addresses of the bastion hosts associated with the virtual WAN, grouped by hub key."
+  value       = { for key, value in module.bastion_public_ip : key => value.public_ip_address }
+}
+
+output "bastion_host_resource_ids" {
+  description = "The resource IDs of the bastion hosts associated with the virtual WAN, grouped by hub key."
+  value       = { for key, value in module.bastion_host : key => value.resource_id }
+}
+
+output "dns_server_ip_address" {
+  description = "The private IP addresses of the DNS servers associated with the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].firewall_private_ip_address_by_hub_key : null
+}
+
+output "express_route_gateway_resource_ids" {
+  description = "The resource IDs of the ExpressRoute gateways associated with the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].ergw_id : null
+}
+
+output "express_route_gateway_resources" {
+  description = "The resource objects of the ExpressRoute gateways associated with the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].ergw : null
+}
+
+output "firewall_policy_resource_ids" {
+  description = "The resource IDs of the firewall policies associated with the virtual WAN."
+  value       = { for key, value in module.firewall_policy : key => value.resource_id }
+}
+
+output "firewall_private_ip_address" {
+  description = "The private IP addresses of the firewalls associated with the virtual WAN, grouped by hub key."
+  value       = local.has_regions ? module.virtual_wan[0].firewall_private_ip_address_by_hub_key : null
+}
+
+output "firewall_public_ip_addresses" {
+  description = "The public IP addresses of the firewalls associated with the virtual WAN, grouped by hub key."
+  value       = local.has_regions ? module.virtual_wan[0].firewall_public_ip_addresses_by_hub_key : null
+}
+
+output "firewall_resource_ids" {
+  description = "The resource IDs of the firewalls associated with the virtual WAN, grouped by hub key."
+  value       = local.has_regions ? module.virtual_wan[0].firewall_resource_ids_by_hub_key : null
+}
+
+output "firewall_resource_names" {
+  description = "The names of the firewalls associated with the virtual WAN, grouped by hub key."
+  value       = local.has_regions ? module.virtual_wan[0].firewall_resource_names_by_hub_key : null
+}
+
+output "name" {
+  description = "The name of the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].name : null
+}
+
+output "private_dns_resolver_resource_ids" {
+  description = "The resource IDs of the private DNS resolvers associated with the virtual WAN, grouped by hub key."
+  value       = { for key, value in module.dns_resolver : key => value.resource_id }
+}
+
+output "private_dns_resolver_resources" {
+  description = "The private DNS resolvers associated with the virtual WAN, grouped by hub key."
+  value       = module.dns_resolver
+}
+
+output "private_dns_zone_resource_ids" {
+  description = "Resource IDs of the private DNS zones"
+  value       = { for key, value in module.private_dns_zones : key => value.private_dns_zone_resource_ids }
+}
+
+output "private_link_private_dns_zones_maps" {
+  description = "Final configuration applied to the private DNS zones and associated virtual network links."
+  value       = { for key, value in module.private_dns_zones : key => value.private_link_private_dns_zones_map }
+}
+
+output "resource_id" {
+  description = "The resource ID of the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].resource_id : null
+}
+
+output "route_map_resource_ids_by_name" {
+  description = "A map of route map name to resource ID."
+  value       = { for key, value in module.route_map : value.name => value.resource_id }
+}
+
+output "route_map_resources" {
+  description = "The route map resource objects, grouped by the arbitrary map key supplied in the route_maps variable."
+  value       = { for key, value in module.route_map : key => value.resource }
+}
+
+output "sidecar_virtual_network_resource_ids" {
+  description = "The resource IDs of the side car virtual networks associated with the virtual WAN, grouped by hub key."
+  value       = { for key, value in module.virtual_network_side_car : key => value.resource_id }
+}
+
+output "sidecar_virtual_network_resources" {
+  description = "The side car virtual networks associated with the virtual WAN, grouped by hub key."
+  value       = module.virtual_network_side_car
+}
+
+output "virtual_hub_bgp_connection_resource_ids" {
+  description = "The resource IDs of the Virtual Hub BGP connections (NVA peers), keyed by `<virtual_hub_key>-<bgp_connection_key>`."
+  value       = local.has_regions ? module.virtual_wan[0].virtual_hub_bgp_connection_resource_ids : null
+}
+
+output "virtual_hub_resource_ids" {
+  description = "The resource IDs of the virtual hubs associated with the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].virtual_hub_resource_ids : null
+}
+
+output "virtual_hub_resource_names" {
+  description = "The names of the virtual hubs associated with the virtual WAN."
+  value       = local.has_regions ? module.virtual_wan[0].virtual_hub_resource_names : null
+}

@@ -1,0 +1,595 @@
+---
+name: End to End Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: ['opened', 'reopened', 'synchronize', 'labeled']
+  workflow_dispatch:
+    inputs:
+      powershell_branch:
+        description: 'The branch to use for the powershell module'
+        default: 'main'
+        type: string
+      alz_bicep_branch:
+        description: 'The branch to use for the bicep module'
+        default: 'main'
+        type: string
+      alz_terraform_branch:
+        description: 'The branch to use for the terraform module'
+        default: 'main'
+        type: string
+      alz_bicep_classic_branch:
+        description: 'The branch to use for the bicep-classic module'
+        default: 'main'
+        type: string
+      alz_on_demand_folder_release_tag:
+        description: 'The tag to use for the on demand folder release'
+        default: 'latest'
+        type: string
+      skip_destroy:
+        description: 'Skip destroy'
+        default: 'no'
+        type: string
+  schedule:
+    - cron: '0 9 * * 1'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  BOOTSTRAP_MODULE_FOLDER: ./bsm
+  STARTER_MODULE_FOLDER: ./stm
+  POWERSHELL_MODULE_FOLDER: ./psm
+  TARGET_FOLDER: ./out
+  LOCAL_TARGET_FOLDER: ./loc
+  BICEP_STARTER_MODULE_REPOSITORY: Azure/alz-bicep-accelerator
+  BICEP_CLASSIC_STARTER_MODULE_REPOSITORY: Azure/ALZ-Bicep
+  TERRAFORM_STARTER_MODULE_REPOSITORY: Azure/alz-terraform-accelerator
+  POWERSHELL_MODULE_REPOSITORY: Azure/ALZ-PowerShell-Module
+  ALZ_POWERSHELL_BRANCH: ${{ inputs.powershell_branch != '' && inputs.powershell_branch || 'main' }}
+  ALZ_BICEP_BRANCH: ${{ inputs.alz_bicep_branch != '' && inputs.alz_bicep_branch || 'main' }}
+  ALZ_BICEP_CLASSIC_BRANCH: ${{ inputs.alz_bicep_classic_branch != '' && inputs.alz_bicep_classic_branch || 'main' }}
+  ALZ_TERRAFORM_BRANCH: ${{ inputs.alz_terraform_branch != '' && inputs.alz_terraform_branch || 'main' }}
+  ALZ_ON_DEMAND_FOLDER_RELEASE_TAG: ${{ inputs.alz_on_demand_folder_release_tag != '' && inputs.alz_on_demand_folder_release_tag || 'latest' }}
+
+jobs:
+  define-matrix:
+    name: Define Matrix
+    runs-on: ubuntu-latest
+
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+      - name: Checkout Bootstrap Modules
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: ${{ env.BOOTSTRAP_MODULE_FOLDER }}
+      - name: Generate Matrix
+        id: matrix
+        run: |
+          $matrix = ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/generate-matrix.ps1 -runNumber "${{ github.run_number }}"
+          $matrixJson = ConvertTo-Json $matrix -Depth 10 -Compress
+          Write-Host (ConvertTo-Json $matrix -Depth 10)
+          Write-Output "matrix=$matrixJson" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+  e2e-test:
+    needs: define-matrix
+    name: "${{ matrix.name }} (${{ matrix.ShortName }})"
+    environment: ${{ github.event_name == 'schedule' && 'CSUTFAUTO' || 'CSUTF' }}
+    if: "${{ github.repository == 'Azure/accelerator-bootstrap-modules' && (contains(github.event.pull_request.labels.*.name, 'PR: Safe to test 🧪') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
+
+    runs-on: ${{ matrix.operatingSystem }}-latest
+    steps:
+      - name: Checkout Bootstrap Modules
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: ${{ env.BOOTSTRAP_MODULE_FOLDER }}
+
+      - name: Checkout PowerShell Module
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: ${{ env.POWERSHELL_MODULE_REPOSITORY }}
+          ref: ${{ env.ALZ_POWERSHELL_BRANCH }}
+          path: ${{ env.POWERSHELL_MODULE_FOLDER }}
+
+      - name: Checkout Starter Modules for Bicep
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: ${{ matrix.infrastructureAsCode == 'bicep' }}
+        with:
+          repository: ${{ env.BICEP_STARTER_MODULE_REPOSITORY }}
+          ref: ${{ env.ALZ_BICEP_BRANCH }}
+          path: ${{ env.STARTER_MODULE_FOLDER }}
+
+      - name: Checkout Starter Modules for Bicep Classic
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: ${{ matrix.infrastructureAsCode == 'bicep-classic' }}
+        with:
+          repository: ${{ env.BICEP_CLASSIC_STARTER_MODULE_REPOSITORY }}
+          ref: ${{ env.ALZ_BICEP_CLASSIC_BRANCH }}
+          path: ${{ env.STARTER_MODULE_FOLDER }}
+
+      - name: Checkout Starter Modules for Terraform
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: ${{ matrix.infrastructureAsCode == 'terraform' }}
+        with:
+          repository: ${{ env.TERRAFORM_STARTER_MODULE_REPOSITORY }}
+          ref: ${{ env.ALZ_TERRAFORM_BRANCH }}
+          path: ${{ env.STARTER_MODULE_FOLDER }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ matrix.terraformVersion }}
+          terraform_wrapper: false
+        if: ${{ matrix.terraformVersion != 'latest' }}
+
+      - name: Azure login
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Get Subscriptions
+        run: |
+          $deployAzureResources = "${{ matrix.deployAzureResources }}"
+          if($deployAzureResources -eq "false") {
+            Write-Host "Skipping subscription retrieval as deployAzureResources is set to false."
+            "ARM_SUBSCRIPTION_ID=${{ vars.ARM_SUBSCRIPTION_ID }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "SUBSCRIPTION_ID_BOOTSTRAP=${{ vars.ARM_SUBSCRIPTION_ID }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "SUBSCRIPTION_ID_MANAGEMENT=${{ vars.ARM_SUBSCRIPTION_ID }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "SUBSCRIPTION_ID_CONNECTIVITY=${{ vars.ARM_SUBSCRIPTION_ID }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "SUBSCRIPTION_ID_IDENTITY=${{ vars.ARM_SUBSCRIPTION_ID }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "SUBSCRIPTION_ID_SECURITY=${{ vars.ARM_SUBSCRIPTION_ID }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            exit 0
+          }
+
+          $shortNamePrefix = "${{ matrix.ShortNamePrefix }}"
+
+          $subscriptionIDBootstrap = az account show --subscription "accelerator-bootstrap-modules-$shortNamePrefix-bootstrap" | ConvertFrom-Json | Select-Object -ExpandProperty id
+          $subscriptionIDManagement = az account show --subscription "accelerator-bootstrap-modules-$shortNamePrefix-management" | ConvertFrom-Json | Select-Object -ExpandProperty id
+          $subscriptionIDConnectivity = az account show --subscription "accelerator-bootstrap-modules-$shortNamePrefix-connectivity" | ConvertFrom-Json | Select-Object -ExpandProperty id
+          $subscriptionIDIdentity = az account show --subscription "accelerator-bootstrap-modules-$shortNamePrefix-identity" | ConvertFrom-Json | Select-Object -ExpandProperty id
+          $subscriptionIDSecurity = az account show --subscription "accelerator-bootstrap-modules-$shortNamePrefix-security" | ConvertFrom-Json | Select-Object -ExpandProperty id
+
+          "ARM_SUBSCRIPTION_ID=$subscriptionIDBootstrap" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUBSCRIPTION_ID_BOOTSTRAP=$subscriptionIDBootstrap" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUBSCRIPTION_ID_MANAGEMENT=$subscriptionIDManagement" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUBSCRIPTION_ID_CONNECTIVITY=$subscriptionIDConnectivity" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUBSCRIPTION_ID_IDENTITY=$subscriptionIDIdentity" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUBSCRIPTION_ID_SECURITY=$subscriptionIDSecurity" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        shell: pwsh
+
+      - name: Install the Accelerator PowerShell Module
+        run: |
+          Write-Host "Installing the Accelerator PowerShell Module"
+          ${{ env.POWERSHELL_MODULE_FOLDER }}/actions_bootstrap_for_e2e_tests.ps1 | Out-String | Write-Verbose
+          Invoke-Build -File ${{ env.POWERSHELL_MODULE_FOLDER }}/src/ALZ.build.ps1 BuildAndInstallOnly | Out-String | Write-Verbose
+          Write-Host "Installed Accelerator Module"
+
+        shell: pwsh
+
+      - name: Setup ALZ Module Inputs
+        run: |
+
+          # Get Inputs
+          $infrastructureAsCode = "${{ matrix.infrastructureAsCode }}"
+          $versionControlSystem = "${{ matrix.versionControlSystem }}"
+          $operatingSystem = "${{ matrix.operatingSystem }}"
+          $terraformVersion = "${{ matrix.terraformVersion }}"
+          $selfHostedAgents = "${{ matrix.agentType }}"
+          $regions = "${{ matrix.regions }}"
+          $starterModule = "${{ matrix.starterModule }}"
+          $shortName = "${{ matrix.ShortName }}"
+          $shortNamePrefix = "${{ matrix.ShortNamePrefix }}"
+          $deployAzureResources = "${{ matrix.deployAzureResources }}"
+
+          $locations_with_aci_zone_support = @(
+            # "uksouth",
+            "northeurope",
+            "eastus2",
+            "westeurope",
+            "swedencentral"
+          )
+
+          $locations = @(
+            "australiaeast",
+            "canadacentral",
+            "centralus",
+            "eastus",
+            "eastus2",
+            "francecentral",
+            "germanywestcentral",
+            "japaneast",
+            "koreacentral",
+            "northcentralus",
+            "northeurope",
+            "southcentralus",
+            "southeastasia",
+            "swedencentral",
+            "uksouth",
+            "westeurope",
+            "westus2",
+            "westus3"
+          )
+
+          $locationIndex = 0
+
+          if($selfHostedAgents -eq "none") {
+            # Use any location
+            $locationIndex = Get-Random -Minimum 0 -Maximum ($locations.Length - 1)
+            $location = $locations[$locationIndex]
+          } else {
+            # Use only locations with ACI Zone Support
+            $locationIndex = Get-Random -Minimum 0 -Maximum ($locations_with_aci_zone_support.Length - 1)
+            $location = $locations_with_aci_zone_support[$locationIndex]
+          }
+          $location2 = "ukwest"
+
+          $enableSelfHostedAgents = "false"
+          if($selfHostedAgents -eq "public" -or $selfHostedAgents -eq "private") {
+            $enableSelfHostedAgents = "true"
+          }
+
+          $enablePrivateNetworking = "false"
+          if($selfHostedAgents -eq "private") {
+            $enablePrivateNetworking = "true"
+          }
+
+          $localDeployAzureResources = $deployAzureResources
+
+          $runNumber = "${{ github.run_number }}"
+
+          Write-Host "Infrastructure As Code: $infrastructureAsCode"
+          Write-Host "Version Control System: $versionControlSystem"
+          Write-Host "Operating System: $operatingSystem"
+          Write-Host "Terraform Version: $terraformVersion"
+          Write-Host "Self Hosted Agents: $selfHostedAgents"
+          Write-Host "Local Deploy Azure Resources: $localDeployAzureResources"
+          Write-Host "Run Number: $runNumber"
+          Write-Host "Starter Module: $starterModule"
+          Write-Host "Regions: $regions"
+          Write-Host "Location: $location"
+          Write-Host "Location 2: $location2"
+
+          $uniqueId = $shortName
+          echo "UNIQUE_ID=$uniqueId" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "Unique ID: $uniqueId"
+
+          $versionControlSystemMapped = $versionControlSystem
+          if($versionControlSystem.Contains("-")) {
+            $versionControlSystemMapped = $versionControlSystem.Split("-")[1]
+          }
+
+          $Inputs = @{}
+          $Inputs["iac_type"] = $infrastructureAsCode
+          $Inputs["bootstrap_module_name"] = "alz_$versionControlSystemMapped"
+          $Inputs["starter_module_name"] =  $starterModule
+          $Inputs["bootstrap_location"] = $location
+          if($regions -eq "multi") {
+            $Inputs["starter_locations"] = @($location, $location2)
+          } else {
+            $Inputs["starter_locations"] = @($location)
+          }
+          $Inputs["service_name"] = "alz"
+          $Inputs["environment_name"] = $uniqueId
+          $Inputs["postfix_number"] = "1"
+          $Inputs["create_branch_policies"] = "true"
+
+          $Inputs["use_private_networking"] = $enablePrivateNetworking
+          $Inputs["allow_storage_access_from_my_ip"] = "false"
+
+          if($versionControlSystem -eq "github") {
+            $Inputs["github_personal_access_token"] = "${{ secrets.VCS_TOKEN_GITHUB }}"
+            $Inputs["github_runners_personal_access_token"] = "${{ secrets.VCS_TOKEN_GITHUB }}"
+            $Inputs["github_organization_name"] = "${{ vars.VCS_ORGANIZATION }}"
+            $Inputs["use_separate_repository_for_templates"] = "true"
+            $Inputs["use_self_hosted_runners"] = $enableSelfHostedAgents
+            $Inputs["use_runner_group"] = "false" # Must add a method to delete these before setting to true
+            if($location -eq "swedencentral") {
+              $Inputs["runner_container_zone_support"] = "false"
+            }
+          }
+
+          if($versionControlSystem -eq "azuredevops") {
+            $Inputs["azure_devops_personal_access_token"] = "${{ secrets.VCS_TOKEN_AZURE_DEVOPS }}"
+            $Inputs["azure_devops_agents_personal_access_token"] = "${{ secrets.VCS_TOKEN_AZURE_DEVOPS }}"
+            $Inputs["azure_devops_organization_name"] = "${{ vars.VCS_ORGANIZATION }}"
+            $Inputs["use_separate_repository_for_templates"] = "true"
+            $Inputs["azure_devops_use_organisation_legacy_url"] = "false"
+            $Inputs["azure_devops_create_project"] = "true"
+            $Inputs["azure_devops_project_name"] = "alz-test-$uniqueId"
+            $Inputs["use_self_hosted_agents"] = $enableSelfHostedAgents
+            if($location -eq "swedencentral") {
+              $Inputs["agent_container_zone_support"] = "false"
+            }
+          }
+
+          if($versionControlSystem -eq "local") {
+            $Inputs["target_directory"] = "${{ github.workspace }}/${{ env.LOCAL_TARGET_FOLDER }}"
+            $Inputs["create_bootstrap_resources_in_azure"] = $localDeployAzureResources
+          }
+
+          $Inputs["apply_approvers"] = @()
+
+          # Target a nested parent MG for public to test that scenario
+          $rootParentManagementGroupId = $selfHostedAgents -eq "none" ? "${{ vars.NESTED_ROOT_PARENT_MANAGEMENT_GROUP_ID }}" : "${{ vars.ARM_TENANT_ID}}"
+          "ROOT_PARENT_MANAGEMENT_GROUP_ID=$rootParentManagementGroupId" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          $Inputs["root_parent_management_group_id"] = $rootParentManagementGroupId
+
+          # Subscription IDs
+          $Inputs["bootstrap_subscription_id"] = $env:SUBSCRIPTION_ID_BOOTSTRAP
+
+          $Inputs["subscription_ids"] = @{
+            management   = $env:SUBSCRIPTION_ID_MANAGEMENT
+            connectivity = $env:SUBSCRIPTION_ID_CONNECTIVITY
+            identity     = $env:SUBSCRIPTION_ID_IDENTITY
+            security     = $env:SUBSCRIPTION_ID_SECURITY
+          }
+
+          # Test specific inputs
+          $Inputs["parent_management_group_display_name"] = "Tenant Root Group"
+          $Inputs["child_management_group_display_name"] = "E2E Test"
+          $Inputs["resource_group_location"] = $location
+
+          # Terraform
+          if($infrastructureAsCode -eq "terraform") {
+            $Inputs["resource_name_suffix"] = $uniqueId
+            $architectureFilePath = "${{ env.STARTER_MODULE_FOLDER }}/templates/$starterModule/lib/architecture_definitions/alz_custom.alz_architecture_definition.yaml"
+            $architectureFile = Get-Content -Path $architectureFilePath -Raw
+            $architectureFile = $architectureFile.Replace("- id: child-test", "- id: child-test-$uniqueId")
+            $architectureFile = $architectureFile.Replace("display_name: Child Test", "display_name: Child Test $uniqueId")
+            $architectureFile = $architectureFile.Replace("- id: test", "- id: test-$uniqueId")
+            $architectureFile = $architectureFile.Replace("display_name: Test", "display_name: Test $uniqueId")
+            $architectureFile = $architectureFile.Replace("parent_id: test", "parent_id: test-$uniqueId")
+            $architectureFile | Out-File -FilePath $architectureFilePath -Encoding utf8 -Force
+            Write-Host "Modified Architecture File Content:"
+            Write-Host $architectureFile
+          }
+
+          # Bicep Classic
+          if($infrastructureAsCode -eq "bicep-classic") {
+            $Inputs["Prefix"] = $uniqueId
+            $Inputs["Location"] = $location
+            $Inputs["Environment"] = "live"
+            $Inputs["SecurityContact"] = "test@test.com"
+            $Inputs["networkType"] = "none"
+          }
+
+          # Bicep
+          if($infrastructureAsCode -eq "bicep") {
+            $Inputs["network_type"] = "none"
+            $Inputs["management_group_int_root_id"] = "test-$uniqueId"
+            $Inputs["management_group_int_root_name"] = "Test $uniqueId"
+            $Inputs["management_group_id_prefix"] = ""
+            $Inputs["management_group_id_postfix"] = ""
+            $Inputs["management_group_name_prefix"] = ""
+            $Inputs["management_group_name_postfix"] = ""
+          }
+
+          $json = ConvertTo-Json $Inputs -Depth 100
+          $json | Out-File -FilePath inputs.json -Encoding utf8 -Force
+
+          Write-Host "Inputs File Content:"
+          Write-Host $json
+
+        shell: pwsh
+
+      - name: Clean Up Pre-Run
+        run: |
+          $deployAzureResources = "${{ matrix.deployAzureResources }}"
+          if($deployAzureResources -eq "false") {
+            Write-Host "Skipping cleanup as deployAzureResources is set to false."
+            exit 0
+          }
+
+          $uniqueId = $env:UNIQUE_ID
+          $shortNamePrefix = "${{ matrix.ShortNamePrefix }}"
+
+          Invoke-Build -File ${{ env.POWERSHELL_MODULE_FOLDER }}/src/ALZ.build.ps1 Install | Out-String | Write-Verbose
+
+          Remove-PlatformLandingZone `
+            -ManagementGroups "$shortNamePrefix" `
+            -Subscriptions $env:SUBSCRIPTION_ID_MANAGEMENT, $env:SUBSCRIPTION_ID_CONNECTIVITY, $env:SUBSCRIPTION_ID_IDENTITY, $env:SUBSCRIPTION_ID_SECURITY `
+            -AdditionalSubscriptions $env:SUBSCRIPTION_ID_BOOTSTRAP `
+            -SubscriptionsTargetManagementGroup $env:ROOT_PARENT_MANAGEMENT_GROUP_ID `
+            -ForceSubscriptionPlacement `
+            -DeleteTargetManagementGroups `
+            -AllowNoManagementGroupMatch `
+            -BypassConfirmation `
+            -BypassConfirmationTimeoutSeconds 0
+
+
+        shell: pwsh
+
+      - name: Run ALZ PowerShell
+        run: |
+
+          Invoke-Build -File ${{ env.POWERSHELL_MODULE_FOLDER }}/src/ALZ.build.ps1 Install | Out-String | Write-Verbose
+
+          # Get Inputs
+          $versionControlSystem = "${{ matrix.versionControlSystem }}"
+          $infrastructureAsCode = "${{ matrix.infrastructureAsCode }}"
+
+          # Run the Module in a retry loop
+          $retryCount = 0
+          $maximumRetries = 10
+          $retryDelay = 10000
+          $success = $false
+
+          do {
+            $retryCount++
+            try {
+              Write-Host "Running the ALZ Module"
+              $starterModuleOverrideFolderPath = "${{ env.STARTER_MODULE_FOLDER }}"
+              if($infrastructureAsCode -eq "terraform") {
+                $starterModuleOverrideFolderPath = "$starterModuleOverrideFolderPath/templates"
+              }
+              Deploy-Accelerator `
+                -output "${{ env.TARGET_FOLDER }}" `
+                -inputs "./inputs.json" `
+                -bootstrapModuleOverrideFolderPath "${{ env.BOOTSTRAP_MODULE_FOLDER }}" `
+                -starterModuleOverrideFolderPath $starterModuleOverrideFolderPath `
+                -starterRelease "${{ env.ALZ_ON_DEMAND_FOLDER_RELEASE_TAG }}" `
+                -autoApprove `
+                -skipAlzModuleVersionRequirementsCheck `
+                -ErrorAction Stop `
+                -Verbose
+
+              if ($LastExitCode -eq 0) {
+                $success = $true
+              } else {
+                throw "Failed to apply the bootstrap environment."
+              }
+            } catch {
+              Write-Host "Failed to apply the bootstrap environment. Destroy and retry..."
+              ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/destroy.ps1 -versionControlSystem $versionControlSystem
+            }
+          } while ($success -eq $false -and $retryCount -lt $maximumRetries)
+
+          if ($success -eq $false) {
+            Write-Host "File Structure after Bootstrap..."
+            $files = Get-ChildItem -File -Recurse -Force
+            $files | ForEach-Object { Write-Host  (Resolve-Path $_ -Relative)}
+            throw "Failed to apply the bootstrap environment after $maximumRetries attempts."
+          } else {
+            Write-Host "Output Folder Structure after Bootstrap..."
+            $files = Get-ChildItem -Path "${{ env.TARGET_FOLDER }}" -File -Recurse -Force
+            $files | ForEach-Object { Write-Host  (Resolve-Path $_ -Relative)}
+
+            if($versionControlSystem -eq "local") {
+              Write-Host ""
+              Write-Host "Local Output Folder Structure after Bootstrap..."
+              $files = Get-ChildItem -Path "${{ env.LOCAL_TARGET_FOLDER }}" -File -Recurse -Force
+              $files | ForEach-Object { Write-Host  (Resolve-Path $_ -Relative)}
+            }
+          }
+
+        shell: pwsh
+        env:
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_USE_OIDC: true
+
+      - name: Run Pipelines or Actions
+        run: |
+          $infrastructureAsCode = "${{ matrix.infrastructureAsCode }}"
+
+          # Get Inputs
+          $versionControlSystem = "${{ matrix.versionControlSystem }}"
+          $versionControlSystemOrganisationName = "${{ vars.VCS_ORGANIZATION }}"
+          $uniqueId = $ENV:UNIQUE_ID
+
+          if($versionControlSystem -eq "github") {
+            $repositoryName = "alz-$uniqueId"
+
+            Write-Host "Running GitHub Actions Test for CI"
+            ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/github-action-run.ps1 `
+              -organizationName $versionControlSystemOrganisationName `
+              -repositoryName $repositoryName `
+              -workflowFileName "ci.yaml" `
+              -skipDestroy `
+              -personalAccessToken "${{ secrets.VCS_TOKEN_GITHUB }}" `
+              -iac $infrastructureAsCode
+
+            Write-Host "Running GitHub Actions Test for CD"
+            ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/github-action-run.ps1 `
+              -organizationName $versionControlSystemOrganisationName `
+              -repositoryName $repositoryName `
+              -workflowFileName "cd.yaml" `
+              -skipDestroy:($infrastructureAsCode -eq "bicep") `
+              -personalAccessToken "${{ secrets.VCS_TOKEN_GITHUB }}" `
+              -iac $infrastructureAsCode
+          }
+
+          if($versionControlSystem -eq "azuredevops") {
+            $projectName = "alz-test-$uniqueId"
+
+            Write-Host "Running Azure DevOps Pipelines Test for CI"
+            ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/azuredevops-pipeline-run.ps1 `
+              -organizationName $versionControlSystemOrganisationName `
+              -projectName $projectName `
+              -pipelineNamePart "Continuous Integration" `
+              -skipDestroy `
+              -personalAccessToken "${{ secrets.VCS_TOKEN_AZURE_DEVOPS }}" `
+              -iac $infrastructureAsCode
+
+            Write-Host "Running Azure DevOps Pipelines Test for CD"
+            ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/azuredevops-pipeline-run.ps1 `
+              -organizationName $versionControlSystemOrganisationName `
+              -projectName $projectName `
+              -pipelineNamePart "Continuous Delivery" `
+              -skipDestroy:($infrastructureAsCode -eq "bicep") `
+              -personalAccessToken "${{ secrets.VCS_TOKEN_AZURE_DEVOPS }}" `
+              -iac $infrastructureAsCode
+          }
+
+        shell: pwsh
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "latest"
+          terraform_wrapper: false
+        if: always()
+
+      - name: Run Terraform Destroy to Clean Up
+        if: ${{ always() && ((inputs.skip_destroy != '' && inputs.skip_destroy || 'no') == 'no') }}
+        run: |
+          Invoke-Build -File ${{ env.POWERSHELL_MODULE_FOLDER }}/src/ALZ.build.ps1 Install | Out-String | Write-Verbose
+
+          # Get Inputs
+          $versionControlSystem = "${{ matrix.versionControlSystem }}"
+
+          # Run destroy
+          ${{ env.BOOTSTRAP_MODULE_FOLDER }}/.github/tests/scripts/destroy.ps1 -versionControlSystem $versionControlSystem
+
+        shell: pwsh
+        env:
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_USE_OIDC: true
+
+      - name: Azure login for a new access token
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Clean Up Post-Run
+        run: |
+          $deployAzureResources = "${{ matrix.deployAzureResources }}"
+          if($deployAzureResources -eq "false") {
+            Write-Host "Skipping cleanup as deployAzureResources is set to false."
+            exit 0
+          }
+
+          $uniqueId = $env:UNIQUE_ID
+
+          Invoke-Build -File ${{ env.POWERSHELL_MODULE_FOLDER }}/src/ALZ.build.ps1 Install | Out-String | Write-Verbose
+
+          Remove-PlatformLandingZone `
+            -ManagementGroups "test-$uniqueId" `
+            -Subscriptions $env:SUBSCRIPTION_ID_MANAGEMENT, $env:SUBSCRIPTION_ID_CONNECTIVITY, $env:SUBSCRIPTION_ID_IDENTITY, $env:SUBSCRIPTION_ID_SECURITY `
+            -AdditionalSubscriptions $env:SUBSCRIPTION_ID_BOOTSTRAP `
+            -SubscriptionsTargetManagementGroup $env:ROOT_PARENT_MANAGEMENT_GROUP_ID `
+            -ForceSubscriptionPlacement `
+            -DeleteTargetManagementGroups `
+            -AllowNoManagementGroupMatch `
+            -BypassConfirmation `
+            -BypassConfirmationTimeoutSeconds 0
+
+        shell: pwsh
+        if: always()

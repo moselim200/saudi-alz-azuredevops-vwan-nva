@@ -1,0 +1,10 @@
+# Generated/sensitive deployment material is never part of the shared template.
+output/
+**/.terraform/
+**/.tools/
+**/*.tfstate*
+**/tfplan*
+**/terraform.tfvars.json
+**/*.log
+**/.env
+**/.env.*
