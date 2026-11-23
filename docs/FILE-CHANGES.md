@@ -125,3 +125,7 @@ Expand-Archive -LiteralPath $zip -DestinationPath $tools -Force
 $terraform = Join-Path $tools "terraform.exe"
 & $terraform version
 ```
+
+## Documentation repair - 23 November 2026
+
+The customer README/instructions and Word guide now check/register PSGallery before Install-Module, import ALZ 7.1.5 and powershell-yaml, and show installed module versions. Download-security guidance distinguishes Windows Internet marking from document corruption. The GitHub Word guides' paragraph shading now includes the required w:val attribute. All four guides preserve the dcterms namespace used by metadata date types; the generators have been corrected. All four guides pass Microsoft Open XML SDK schema validation. Terraform remains 1.14.9; no deployment source, state or cloud resource was changed.

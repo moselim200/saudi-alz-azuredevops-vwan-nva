@@ -24,9 +24,26 @@ Review Azure tenant/subscription permissions using https://azure.github.io/Azure
 
 Use a new extracted package folder, then cd to that folder. These download commands are for Windows amd64, not ARM64. If Terraform 1.14.9 is already installed, set $terraform to its absolute terraform.exe path instead of downloading again. Do not copy a machine-specific path into inputs.yaml.
 
+Use PowerShell 7.4+ and the same user/session that will run the launcher. The block registers the default PSGallery repository only if it is missing; PowerShellGet and PSResourceGet use separate repository registrations. Approve the PSGallery prompt only if your organization permits that public feed. If registration or installation fails, stop and use the approved repository process; do not bypass TLS, execution policy or managed-device controls.
+
+Windows may mark downloaded ZIPs/documents as originating from the Internet. After verifying the source and published SHA256, if organizational policy permits, use the downloaded ZIP's Properties > Unblock before extracting it to a new folder. Do not disable Word Protected View or Trust Center settings. An unreadable-content/recovery warning is a separate document-integrity issue: use the corrected guide from release v2026.11.23-docs or the Markdown instructions, rather than accepting recovery for an unknown document.
+
 ```powershell
+$ErrorActionPreference = "Stop"
+
+if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+    Register-PSRepository -Default
+}
+
+Get-PSRepository -Name PSGallery
+
 Install-Module ALZ -RequiredVersion 7.1.5 -Repository PSGallery -Scope CurrentUser
 Install-Module powershell-yaml -Repository PSGallery -Scope CurrentUser
+
+Import-Module ALZ -RequiredVersion 7.1.5
+Import-Module powershell-yaml
+
+Get-Module ALZ, powershell-yaml | Select-Object Name, Version
 $ErrorActionPreference = "Stop"
 $version = "1.14.9"
 
